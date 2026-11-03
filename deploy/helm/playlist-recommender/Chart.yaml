@@ -1,0 +1,9 @@
+apiVersion: v2
+name: playlist-recommender
+description: Playlist recommendations from association rules - API, batch trainer and monitoring
+type: application
+version: 0.1.0
+appVersion: "2.0.0"
+maintainers:
+  - name: Davi Fraga
+    url: https://github.com/davifmn

@@ -1,0 +1,10 @@
+Playlist recommender {{ .Chart.AppVersion }} deployed as "{{ .Release.Name }}".
+
+The API becomes Ready once a trained model exists in s3://{{ .Values.storage.bucket }}/models/LATEST.
+{{- if .Values.trainer.runOnDeploy }}
+A training Job was started: kubectl get jobs -l app.kubernetes.io/component=trainer -n {{ .Release.Namespace }}
+{{- end }}
+
+Try it:
+  kubectl port-forward svc/{{ include "recommender.fullname" . }}-api 8080:{{ .Values.api.service.port }} -n {{ .Release.Namespace }}
+  curl -s localhost:8080/v1/model

@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  KUBERNETES_VERSION: "1.31.0"
+
+jobs:
+  python:
+    name: Python ${{ matrix.python }} (lint + tests)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest -v
+
+  manifests:
+    name: Helm chart + Argo CD manifests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C /usr/local/bin kubeconform
+      - name: helm lint (every environment)
+        run: |
+          for env in dev prod ci; do
+            helm lint deploy/helm/playlist-recommender -f deploy/environments/values-$env.yaml --strict
+          done
+      - name: Render and validate against the Kubernetes API schemas
+        run: |
+          CRDS='https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+          for env in dev prod ci; do
+            echo "::group::$env"
+            helm template rec deploy/helm/playlist-recommender -f deploy/environments/values-$env.yaml \
+              | kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" \
+                  -schema-location default -schema-location "$CRDS"
+            echo "::endgroup::"
+          done
+          kubeconform -strict -summary -schema-location default -schema-location "$CRDS" deploy/argocd/
+
+  images:
+    name: Build container images
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        service: [api, trainer]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/${{ matrix.service }}/Dockerfile
+          push: false
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  e2e:
+    name: End-to-end on Kubernetes (kind)
+    needs: [python, manifests]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build images
+        run: |
+          docker build -f services/api/Dockerfile -t local/playlist-recommender-api:ci .
+          docker build -f services/trainer/Dockerfile -t local/playlist-recommender-trainer:ci .
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: recommender
+          config: deploy/kind/cluster.yaml
+      - name: Load images into the cluster
+        run: kind load docker-image local/playlist-recommender-api:ci local/playlist-recommender-trainer:ci --name recommender
+      - name: Install the chart (S3 emulator + demo data + training on deploy)
+        run: |
+          helm upgrade --install rec deploy/helm/playlist-recommender -n recommender --create-namespace \
+            -f deploy/environments/values-ci.yaml --wait --wait-for-jobs --timeout 10m
+          kubectl -n recommender get pods,jobs,svc
+      - name: Smoke test through the Service
+        run: |
+          kubectl -n recommender port-forward svc/rec-playlist-recommender-api 8080:80 &
+          sleep 5
+          python scripts/smoke_test.py http://localhost:8080
+      - name: Retrain from the CronJob and check the API swaps models without downtime
+        run: |
+          before=$(curl -fsS localhost:8080/v1/model | python -c "import json,sys; print(json.load(sys.stdin)['version'])")
+          kubectl -n recommender create job --from=cronjob/rec-playlist-recommender-trainer retrain-1
+          kubectl -n recommender wait --for=condition=complete job/retrain-1 --timeout=5m
+          for i in $(seq 1 30); do
+            after=$(curl -fsS localhost:8080/v1/model | python -c "import json,sys; print(json.load(sys.stdin)['version'])")
+            [ "$after" != "$before" ] && echo "swapped $before -> $after" && break
+            sleep 2
+          done
+          [ "$after" != "$before" ]
+          python scripts/smoke_test.py http://localhost:8080
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl -n recommender get all
+          kubectl -n recommender describe pods
+          kubectl -n recommender logs -l app.kubernetes.io/component=trainer --all-containers --tail=100
+          kubectl -n recommender logs -l app.kubernetes.io/component=api --tail=100

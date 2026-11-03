@@ -1,0 +1,24 @@
+# Dev follows main automatically: every merged commit is deployed (GitOps).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: playlist-recommender-dev
+  namespace: argocd
+spec:
+  project: playlist-recommender
+  source:
+    repoURL: https://github.com/davifmn/playlist-recommender.git
+    targetRevision: main
+    path: deploy/helm/playlist-recommender
+    helm:
+      valueFiles:
+        - ../../environments/values-dev.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: recommender-dev
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]
+    retry:
+      limit: 5
+      backoff: { duration: 10s, factor: 2, maxDuration: 3m }

@@ -1,0 +1,20 @@
+# Prod is synced by a person after reviewing the diff in Argo CD (no automated sync).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: playlist-recommender-prod
+  namespace: argocd
+spec:
+  project: playlist-recommender
+  source:
+    repoURL: https://github.com/davifmn/playlist-recommender.git
+    targetRevision: main
+    path: deploy/helm/playlist-recommender
+    helm:
+      valueFiles:
+        - ../../environments/values-prod.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: recommender-prod
+  syncPolicy:
+    syncOptions: [CreateNamespace=true]

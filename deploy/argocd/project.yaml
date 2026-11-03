@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: playlist-recommender
+  namespace: argocd
+spec:
+  description: Playlist recommender (dev and prod)
+  sourceRepos:
+    - https://github.com/davifmn/playlist-recommender.git
+  destinations:
+    - { server: https://kubernetes.default.svc, namespace: recommender-dev }
+    - { server: https://kubernetes.default.svc, namespace: recommender-prod }
+  clusterResourceWhitelist:
+    - { group: "", kind: Namespace }
+  namespaceResourceWhitelist:
+    - { group: "*", kind: "*" }

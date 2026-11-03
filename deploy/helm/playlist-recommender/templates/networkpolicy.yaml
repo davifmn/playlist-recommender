@@ -1,0 +1,16 @@
+{{- if .Values.networkPolicy.enabled }}
+# Only HTTP on the API port reaches the API pods. Everything else is denied.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "recommender.fullname" . }}-api
+  labels: {{- include "recommender.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "recommender.selector" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: {{ .Values.api.port }} }
+{{- end }}

@@ -1,0 +1,80 @@
+# Defaults are production-shaped; environments override them (deploy/environments/).
+
+image:
+  registry: ghcr.io/davifmn
+  tag: ""            # defaults to the chart appVersion
+  pullPolicy: IfNotPresent
+
+storage:
+  # Where datasets and model artifacts live. In AWS use a real bucket plus IRSA
+  # (serviceAccount.annotations) instead of static keys.
+  bucket: playlist-recommender
+  endpointUrl: ""    # set for S3-compatible stores (emulator, MinIO, Ceph, GCS interop)
+  region: us-east-1
+  existingSecret: "" # Secret with AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY, if not using IRSA
+
+serviceAccount:
+  create: true
+  annotations: {}    # e.g. eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/recommender
+
+api:
+  replicas: 2
+  pollSeconds: 30
+  port: 8080
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { memory: 512Mi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  service:
+    type: ClusterIP
+    port: 80
+  ingress:
+    enabled: false
+    className: nginx
+    host: recommender.example.com
+
+trainer:
+  schedule: "0 3 * * *"        # nightly retraining
+  runOnDeploy: true            # also train once on every deploy/sync
+  minSupport: 0.1
+  minConfidence: 0.5
+  maxLen: 3
+  activeDeadlineSeconds: 3600
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { memory: 4Gi }
+
+# Dev/CI only: upload synthetic playlists before training.
+demoData:
+  enabled: false
+  playlists: 600
+
+# Dev/CI only: an in-cluster S3 emulator (moto server). Never enable in production.
+s3Emulator:
+  enabled: false
+  image: motoserver/moto:5.2.5
+
+networkPolicy:
+  enabled: true
+
+monitoring:
+  serviceMonitor: false        # requires the Prometheus Operator CRDs
+  prometheusRules: false
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+  seccompProfile: { type: RuntimeDefault }
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }

@@ -1,0 +1,12 @@
+{{- if .Values.api.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "recommender.fullname" . }}-api
+  labels: {{- include "recommender.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.api.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels: {{- include "recommender.selector" . | nindent 6 }}
+      app.kubernetes.io/component: api
+{{- end }}

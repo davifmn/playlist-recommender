@@ -1,0 +1,17 @@
+# Dev: everything inside the cluster, no cloud account needed.
+image:
+  tag: main
+  pullPolicy: Always
+storage:
+  bucket: recommender-dev
+api:
+  pollSeconds: 10
+  autoscaling: { enabled: false }
+  replicas: 1
+  podDisruptionBudget: { enabled: false }
+trainer:
+  schedule: "*/30 * * * *"
+demoData:
+  enabled: true
+s3Emulator:
+  enabled: true

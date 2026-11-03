@@ -1,0 +1,49 @@
+{{- if .Values.monitoring.serviceMonitor }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "recommender.fullname" . }}-api
+  labels: {{- include "recommender.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: {{- include "recommender.selector" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+{{- end }}
+{{- if .Values.monitoring.prometheusRules }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "recommender.fullname" . }}
+  labels: {{- include "recommender.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: playlist-recommender
+      rules:
+        - alert: RecommenderNoModelLoaded
+          expr: sum(kube_pod_status_ready{condition="true", pod=~"{{ include "recommender.fullname" . }}-api-.*"}) == 0
+          for: 10m
+          labels: { severity: critical }
+          annotations:
+            summary: No API pod is ready (no model loaded). See docs/runbook.md#no-model-loaded
+        - alert: RecommenderModelReloadFailing
+          expr: increase(recommender_model_reloads_total{result="error"}[30m]) > 0
+          labels: { severity: warning }
+          annotations:
+            summary: A new model version was rejected. See docs/runbook.md#model-reload-failing
+        - alert: RecommenderHighLatency
+          expr: histogram_quantile(0.99, sum by (le) (rate(recommender_http_request_duration_seconds_bucket{route="/v1/recommendations"}[5m]))) > 0.25
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: p99 latency above 250 ms. See docs/runbook.md#high-latency
+        - alert: RecommenderTrainingFailed
+          expr: kube_job_status_failed{job_name=~"{{ include "recommender.fullname" . }}-trainer-.*"} > 0
+          labels: { severity: warning }
+          annotations:
+            summary: The nightly training job failed. See docs/runbook.md#training-failed
+{{- end }}

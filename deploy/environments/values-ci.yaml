@@ -1,0 +1,21 @@
+# CI end-to-end test on kind: images are built in the workflow and loaded into the cluster.
+image:
+  registry: local
+  tag: ci
+  pullPolicy: Never
+storage:
+  bucket: recommender-ci
+api:
+  pollSeconds: 3
+  autoscaling: { enabled: false }
+  replicas: 2
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+trainer:
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+demoData:
+  enabled: true
+  playlists: 600
+s3Emulator:
+  enabled: true

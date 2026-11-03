@@ -1,0 +1,23 @@
+# Prod: real S3 bucket (created by Terraform), credentials through IRSA, no static keys.
+image:
+  tag: "2.0.0"           # pinned; promoted by changing this line in a reviewed PR
+storage:
+  bucket: acme-playlist-recommender-prod
+  region: sa-east-1
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/playlist-recommender
+api:
+  autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 12, targetCPUUtilizationPercentage: 65 }
+  podDisruptionBudget: { enabled: true, minAvailable: 2 }
+  ingress:
+    enabled: true
+    host: recommender.example.com
+trainer:
+  schedule: "0 4 * * *"
+  resources:
+    requests: { cpu: "2", memory: 6Gi }
+    limits: { memory: 12Gi }
+monitoring:
+  serviceMonitor: true
+  prometheusRules: true

@@ -1,0 +1,53 @@
+{{- if .Values.s3Emulator.enabled }}
+# DEV/CI ONLY: in-memory S3 emulator so the stack runs without a cloud account.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "recommender.fullname" . }}-s3-credentials
+  labels: {{- include "recommender.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  AWS_ACCESS_KEY_ID: emulator
+  AWS_SECRET_ACCESS_KEY: emulator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "recommender.fullname" . }}-s3
+  labels: {{- include "recommender.labels" . | nindent 4 }}
+    app.kubernetes.io/component: s3-emulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "recommender.selector" . | nindent 6 }}
+      app.kubernetes.io/component: s3-emulator
+  template:
+    metadata:
+      labels: {{- include "recommender.selector" . | nindent 8 }}
+        app.kubernetes.io/component: s3-emulator
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: moto
+          image: {{ .Values.s3Emulator.image }}
+          ports: [{ name: s3, containerPort: 5000 }]
+          readinessProbe:
+            tcpSocket: { port: s3 }
+            periodSeconds: 3
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "recommender.fullname" . }}-s3
+  labels: {{- include "recommender.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "recommender.selector" . | nindent 4 }}
+    app.kubernetes.io/component: s3-emulator
+  ports: [{ name: s3, port: 5000, targetPort: s3 }]
+{{- end }}

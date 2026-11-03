@@ -1,0 +1,20 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "recommender.fullname" . }}-trainer
+  labels: {{- include "recommender.labels" . | nindent 4 }}
+    app.kubernetes.io/component: trainer
+spec:
+  schedule: {{ .Values.trainer.schedule | quote }}
+  concurrencyPolicy: Forbid          # never two trainings racing to publish
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: {{ .Values.trainer.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels: {{- include "recommender.selector" . | nindent 12 }}
+            app.kubernetes.io/component: trainer
+        spec: {{- include "recommender.trainerPod" . | nindent 10 }}
